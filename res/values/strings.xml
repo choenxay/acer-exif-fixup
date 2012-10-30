@@ -1,0 +1,13 @@
+<resources>
+    <string name="app_name">Acer EXIF Fixup</string>
+    <string name="about">Acer Liquid phones have a bug that sets the EXIF date and time to 2002–12–08 12:00:00\n\nThis service monitors the DCIM/Camera folder and alters the EXIF data for the files captured with default Camera application.\n\nYou can also fix existing files using \"Fix existing photos\" menu item.\n\nSee http://rtg.in.ua/app/acer-exif-fixup for more information.</string>
+    <string name="fix_existing">Fix existing photos</string>
+    <string name="default_count">0/0</string>
+    <string name="scanning_title">Scanning files&#8230;</string>
+    <string name="cancel">Cancel</string>
+    <plurals name="file_corrected_template">
+        <item quantity="one">%d file corrected</item>
+        <item quantity="other">%d files corrected</item>
+    </plurals>
+    <string name="camera_folder_info_template">Camera folder: %s</string>
+</resources>

@@ -1,0 +1,5 @@
+<menu xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:id="@+id/fix_existing"
+          android:title="@string/fix_existing"
+          android:icon="@drawable/ic_menu_gallery" />
+</menu>

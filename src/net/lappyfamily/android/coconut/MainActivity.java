@@ -29,17 +29,16 @@ import android.widget.Toast;
 public class MainActivity extends Activity {
 	ImageScannerTask scannerTask;
 	File cameraDirectory;
+	Dialog scannerDialog;
+	ProgressBar progressBar;
+	TextView progressInfoText;
 	
-	/* Yes, this is a bad idea to put AsyncTask in Activity
-	 * Upon changing configuration the context will become invalid and we'll get an ugly traceback.
+	/* Yes, this is a bad idea to put AsyncTask in Activity.
+	 * Will fix this once I read at least some docs on Java :)
 	 * 
 	 * I am really sorry about this.
 	 */
 	private class ImageScannerTask extends AsyncTask<String, Integer, Integer>{		
-		Dialog scannerDialog;
-		ProgressBar progressBar;
-		TextView progressInfoText;
-
 		Context context;
 		
 		ImageScannerTask(Context context) {
@@ -48,23 +47,9 @@ public class MainActivity extends Activity {
 		
 		@Override
 		protected void onPreExecute() {
-			scannerDialog = new Dialog(context);
-	        scannerDialog.setTitle(getString(R.string.scanning_title));
-	        scannerDialog.setContentView(R.layout.progress);
-	        
-	        progressBar = (ProgressBar) scannerDialog.findViewById(R.id.progressBar1);
-	        progressInfoText = (TextView) scannerDialog.findViewById(R.id.textView1);
-	        
-	        Button cancelButton = (Button) scannerDialog.findViewById(R.id.cancel_button);
-	        cancelButton.setOnClickListener(new OnClickListener() {	
-				public void onClick(View arg0) {
-					scannerDialog.hide();
-					scannerTask.cancel(true);
-				}
-		    });
-
-	        scannerDialog.show();
-
+			// We disable the service because we will be generating the inotify events.
+			Intent serviceIntent = new Intent(context, ExifService.class);
+	        stopService(serviceIntent);
 		}
 		
 		@Override
@@ -104,13 +89,23 @@ public class MainActivity extends Activity {
 		}
 		
 		protected void onPostExecute(Integer result) {
+			Intent serviceIntent = new Intent(context, ExifService.class);
+	        startService(serviceIntent);
+
 			String itemsFixedLabel = getResources().getQuantityString(R.plurals.file_corrected_template, result);
 			Toast t = Toast.makeText(context, String.format(itemsFixedLabel, result), Toast.LENGTH_SHORT);
 			t.show();
 			
-			scannerDialog.hide();
-			scannerDialog = null;
+			onRescanCompleted();
 		}
+		
+		protected void onCancelled() {
+			Intent serviceIntent = new Intent(context, ExifService.class);
+	        startService(serviceIntent);
+	        
+	        onRescanCompleted();
+		}
+		
 	}
 
     @Override
@@ -146,15 +141,51 @@ public class MainActivity extends Activity {
     
     @Override
     public void onDestroy() {
-    	if (scannerTask != null && scannerTask.getStatus() == AsyncTask.Status.RUNNING) {
-    		scannerTask.cancel(true);
-    	}
-
+    	stopScanningExistingFiles();
     	super.onDestroy();
     }
     
+    @Override
+    public void onStop() {
+    	stopScanningExistingFiles();
+    	super.onStop();
+    }
+    
     private void startScanningExistingFiles() {
-		scannerTask = new ImageScannerTask(this);
-		scannerTask.execute(cameraDirectory.getAbsolutePath());
+    	scannerDialog = new Dialog(this);
+        scannerDialog.setTitle(getString(R.string.scanning_title));
+        scannerDialog.setContentView(R.layout.progress);
+        
+        progressBar = (ProgressBar) scannerDialog.findViewById(R.id.progressBar1);
+        progressInfoText = (TextView) scannerDialog.findViewById(R.id.textView1);
+        
+        Button cancelButton = (Button) scannerDialog.findViewById(R.id.cancel_button);
+        cancelButton.setOnClickListener(new OnClickListener() {	
+			public void onClick(View arg0) {
+				stopScanningExistingFiles();
+			}
+	    });
+
+        scannerDialog.show();
+        
+    	scannerTask = new ImageScannerTask(this);
+        scannerTask.execute(cameraDirectory.getAbsolutePath());
+    }
+    
+    private void onRescanCompleted() {
+		try {
+			scannerDialog.dismiss();
+		}
+		catch(Exception e) {
+			// Nothing. The Activity may have already gone.
+		}
+		scannerDialog = null;
+	}
+    
+    private void stopScanningExistingFiles() {
+    	if (scannerTask != null && scannerTask.getStatus() == AsyncTask.Status.RUNNING) {
+    		scannerTask.cancel(true);
+    		onRescanCompleted();
+    	}
     }
 }

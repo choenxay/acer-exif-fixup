@@ -27,6 +27,7 @@ import android.util.Log;
 public class ExifCorrector {
 	private List<ExifTagInfo> fixupTags;
 	private ByteOrder byteOrder;
+	private static final String TAG = "ExifCorrector";
 
 	public ExifCorrector() {
 		this.fixupTags = new LinkedList<ExifTagInfo>();
@@ -81,7 +82,7 @@ public class ExifCorrector {
 	}
 
 	public boolean correct(File imageFile) {
-		Log.d("AcerExifCorrector", "Processing " + imageFile.getAbsolutePath());
+		Log.d(TAG, "Processing " + imageFile.getAbsolutePath());
 
 		/* Cleanup */
 		fixupTags.clear();
@@ -98,25 +99,25 @@ public class ExifCorrector {
 		try {
 			imageDateTime = filenameToDate(imageFile.getName());
 		} catch (Exception e) {
-			Log.w("AcerExifCorrector", "Unknown or wrong format for " + imageFile.getAbsolutePath());
+			Log.w(TAG, "Unknown or wrong format for " + imageFile.getAbsolutePath());
 			return false;
 		}
 
 		try {
 			if (hasMeaningfulDate(imageFile)) {
-				Log.d("AcerExifCorrector", "Date appears to be correct for "
+				Log.d(TAG, "Date appears to be correct for "
 						+ imageFile.getAbsolutePath());
 				return false;
 			}
 		} catch (Exception e) {
-			Log.w("AcerExifCorrector", "Error while reading exif: " + e);
+			Log.w(TAG, "Error while reading exif: " + e);
 			return false;
 		}
 
 		try {
 			imageData = new RandomAccessFile(imageFile, "rw");
 		} catch (FileNotFoundException e) {
-			Log.w("AcerExifCorrector", "File " + imageFile.getAbsolutePath()
+			Log.w(TAG, "File " + imageFile.getAbsolutePath()
 					+ " was not found");
 			return false;
 		}
@@ -138,11 +139,11 @@ public class ExifCorrector {
 				}
 			}
 		} catch (IOException e) {
-			Log.e("AcerExifCorrector", "Error while reading", e);
+			Log.e(TAG, "Error while reading", e);
 		}
 
 		if (!exif_found) {
-			Log.i("AcerExifCorrector", "EXIF not found, nothing to do.");
+			Log.i(TAG, "EXIF not found, nothing to do.");
 			return false;
 		}
 
@@ -150,7 +151,7 @@ public class ExifCorrector {
 		try {
 			collectExifOffsets(imageData);
 		} catch (Exception e) {
-			Log.e("AcerExifCorrector", "Error while collecting EXIF offsets", e);
+			Log.e(TAG, "Error while collecting EXIF offsets", e);
 			return false;
 		}
 
@@ -158,7 +159,7 @@ public class ExifCorrector {
 		try {
 			patchExif(imageData, imageDateTime);
 		} catch (IOException e) {
-			Log.e("AcerExifCorrector", "Error while patching", e);
+			Log.e(TAG, "Error while patching", e);
 			return false;
 		}
 
@@ -175,7 +176,7 @@ public class ExifCorrector {
 			e.printStackTrace();
 		}
 
-		Log.d("AcerExifCorrector", "Finished processing " + imageFile.getAbsolutePath());
+		Log.d(TAG, "Finished processing " + imageFile.getAbsolutePath());
 		return true;
 	}
 
@@ -292,7 +293,7 @@ public class ExifCorrector {
 				bb.putInt((seconds << 4) + 1);
 			}
 
-			Log.d("AcerExifCorrector",
+			Log.d(TAG,
 					String.format("Updating tag 0x%04x", tag_id));
 
 			imageData.seek(offset);

@@ -28,10 +28,12 @@ public class ExifCorrector {
 	private List<ExifTagInfo> fixupTags;
 	private ByteOrder byteOrder;
 	private static final String TAG = "ExifCorrector";
+	private static final String EXIF_DATETIME_FORMAT = "yyyy:MM:dd HH:mm:ss";
+	private static final String EXIF_DATE_FORMAT = "yyyy:MM:dd";
 
 	public ExifCorrector() {
-		this.fixupTags = new LinkedList<ExifTagInfo>();
-		this.byteOrder = ByteOrder.BIG_ENDIAN;
+		fixupTags = new LinkedList<ExifTagInfo>();
+		byteOrder = ByteOrder.BIG_ENDIAN;
 	}
 
 	private Date filenameToDate(String filename) throws Exception {
@@ -60,25 +62,29 @@ public class ExifCorrector {
 		return imageDateTime;
 	}
 
-	/*
-	 * If DateTime is not 2002 then it may mean the file is already fixed.
-	 * 
-	 * Yay!
-	 */
-	private boolean hasMeaningfulDate(File imageFile) throws Exception {
+	private boolean hasProperDate(File imageFile, Date imageDate) throws Exception {
+		boolean result = false;
 		try {
 			ExifInterface exif = new ExifInterface(imageFile.getAbsolutePath());
-			String date = exif.getAttribute(ExifInterface.TAG_DATETIME);
-			if (date == null) {
+			String exifDateString = exif.getAttribute(ExifInterface.TAG_DATETIME);
+			
+			SimpleDateFormat format = new SimpleDateFormat();
+			format.setTimeZone(TimeZone.getDefault());
+			
+			if (exifDateString == null) {
 				throw new Exception("No Exif.DateTime");
 			}
-			if (date.equals("2002:12:08 12:00:00")) {
-				return false;
+			
+			format.applyPattern(EXIF_DATETIME_FORMAT);
+			String filenameDateString = format.format(imageDate);
+			
+			if (exifDateString.equals(filenameDateString)) {
+				result = true;
 			}
 		} catch (IOException e) {
-			return false;
+			// pass
 		}
-		return true;
+		return result;
 	}
 
 	public boolean correct(File imageFile) {
@@ -86,9 +92,11 @@ public class ExifCorrector {
 
 		/* Cleanup */
 		fixupTags.clear();
+		byteOrder = ByteOrder.BIG_ENDIAN;
 
 		Date imageDateTime;
 		RandomAccessFile imageData;
+		String logPrefix = imageFile.getAbsolutePath() + ": ";
 
 		String state = Environment.getExternalStorageState();
 
@@ -99,14 +107,13 @@ public class ExifCorrector {
 		try {
 			imageDateTime = filenameToDate(imageFile.getName());
 		} catch (Exception e) {
-			Log.w(TAG, "Unknown or wrong format for " + imageFile.getAbsolutePath());
+			Log.w(TAG, logPrefix + "Unknown or wrong format");
 			return false;
 		}
 
 		try {
-			if (hasMeaningfulDate(imageFile)) {
-				Log.d(TAG, "Date appears to be correct for "
-						+ imageFile.getAbsolutePath());
+			if (hasProperDate(imageFile, imageDateTime)) {
+				Log.d(TAG, logPrefix + "EXIF Date is correct");
 				return false;
 			}
 		} catch (Exception e) {
@@ -117,8 +124,7 @@ public class ExifCorrector {
 		try {
 			imageData = new RandomAccessFile(imageFile, "rw");
 		} catch (FileNotFoundException e) {
-			Log.w(TAG, "File " + imageFile.getAbsolutePath()
-					+ " was not found");
+			Log.w(TAG, logPrefix + "File not found");
 			return false;
 		}
 
@@ -139,11 +145,11 @@ public class ExifCorrector {
 				}
 			}
 		} catch (IOException e) {
-			Log.e(TAG, "Error while reading", e);
+			Log.e(TAG, logPrefix + "Error while reading", e);
 		}
 
 		if (!exif_found) {
-			Log.i(TAG, "EXIF not found, nothing to do.");
+			Log.i(TAG, logPrefix + "EXIF not found, nothing to do");
 			return false;
 		}
 
@@ -152,6 +158,11 @@ public class ExifCorrector {
 			collectExifOffsets(imageData);
 		} catch (Exception e) {
 			Log.e(TAG, "Error while collecting EXIF offsets", e);
+			return false;
+		}
+		
+		if (fixupTags.size() == 0) {
+			Log.d(TAG, logPrefix + "No EXIF offsets collected, nothing to do");
 			return false;
 		}
 
@@ -222,7 +233,7 @@ public class ExifCorrector {
 				bb.order(this.byteOrder);
 
 				// EXIF Tag: All primitives are signed in Java
-				int tag = bb.getShort() & 0x0000ffff;
+				int tag_id = bb.getShort() & 0x0000ffff;
 				// skipping format (short)
 				bb.position(bb.position() + 2);
 
@@ -230,19 +241,19 @@ public class ExifCorrector {
 				int no_of_components = bb.getInt();
 				long value = bb.getInt();
 
-				if (tag == ExifTagInfo.EXIF_SUBIFD_TAG
-						|| tag == ExifTagInfo.GPS_SUBIFD_TAG) {
+				if (tag_id == ExifTagInfo.EXIF_SUBIFD_TAG
+						|| tag_id == ExifTagInfo.GPS_SUBIFD_TAG) {
 					// Will process this sub IFD on next iteration
 					ifd_offsets.add(value);
 				}
-
-				switch (tag) {
+				
+				switch (tag_id) {
 				case ExifTagInfo.EXIF_DATETIME_ORIGINAL:
 				case ExifTagInfo.EXIF_CREATEDATE:
 				case ExifTagInfo.EXIF_GPS_TIMESTAMP:
 				case ExifTagInfo.EXIF_GPS_DATESTAMP:
 					// We use absolute offset to simplify calculations;
-					fixupTags.add(new ExifTagInfo(tag, tiff_offset + value,
+					fixupTags.add(new ExifTagInfo(tag_id, tiff_offset + value,
 							no_of_components));
 					break;
 				}
@@ -266,13 +277,13 @@ public class ExifCorrector {
 			switch (tag_id) {
 			case ExifTagInfo.EXIF_DATETIME_ORIGINAL:
 			case ExifTagInfo.EXIF_CREATEDATE:
-				format.applyPattern("yyyy:MM:dd hh:mm:ss");
+				format.applyPattern(EXIF_DATETIME_FORMAT);
 				result = format.format(imageDateTime).getBytes();
 				break;
 			case ExifTagInfo.EXIF_GPS_DATESTAMP:
 				// black magic - we need to convert local time
 				// imageDateTime to UTC
-				format.applyPattern("yyyy:MM:dd");
+				format.applyPattern(EXIF_DATE_FORMAT);
 				format.setTimeZone(TimeZone.getTimeZone("UTC"));
 				result = format.format(imageDateTime).getBytes();
 				break;
@@ -293,11 +304,9 @@ public class ExifCorrector {
 				bb.putInt((seconds << 4) + 1);
 			}
 
-			Log.d(TAG,
-					String.format("Updating tag 0x%04x", tag_id));
-
 			imageData.seek(offset);
 			imageData.write(result);
+			Log.d(TAG, String.format("Updated tag 0x%04x", tag_id));
 		}
 
 	}
